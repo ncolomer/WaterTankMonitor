@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "*.bkp1": "c",
+        "*.bkp0": "c",
+        "adafruit_gfx.h": "c",
+        "*.bkp2": "c",
+        "*.ddd": "c"
+    }
+}

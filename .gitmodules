@@ -1,0 +1,3 @@
+[submodule "Firmware/bootloader/optiboot_flash"]
+	path = Firmware/bootloader/optiboot_flash
+	url = https://github.com/MCUdude/optiboot_flash.git

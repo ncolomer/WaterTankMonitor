@@ -1,0 +1,1 @@
+Run tests with `pio test --environment test --without-uploading`
