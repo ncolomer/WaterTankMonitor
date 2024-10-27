@@ -10,10 +10,10 @@ The PCB layout was designed to fit in a [Legrand Mosaic obturateur](https://www.
 The project is hosted on [Hackaday.io](https://hackaday.io/project/199023-water-tank-monitor). See this [blogpost](https://hackaday.io/project/199023-water-tank-monitor/details) for more details about the designing and building process.
 
 ## Features
-- get readings from an A02 ultrasonic sensor (UART)
-- display level percentage on a 0.91" SSD1306 OLED screen (I2C)
+- get distance readings from an A02 ultrasonic sensor (UART)
+- display water level percentage on a 0.91" SSD1306 OLED screen (I2C)
 - onboard push button to turn on display (incl. off timer)
-- report readings to a Zigbee [PTVO firmware](https://ptvo.info) (UART) for integration with any home automation software
+- report readings to a Zigbee [PTVO firmware](https://ptvo.info) (UART) for integration with home automation software
 
 # PCB
 
@@ -38,6 +38,8 @@ It includes [JLCPCB](https://jlcpcb.com/)'s [production files](https://raw.githu
 - (optional) zigbee connectivity
   - Zigbee module with PTVO firmware, eg. CC2530
 
+Documentation (datasheets, footprints) can be found in the [`/Documentation`](https://github.com/ncolomer/WaterTankMonitor/tree/main/Documentation) directory.
+
 ## Programming
 
 ### ICSP (bootloader upload)
@@ -51,9 +53,10 @@ It includes [JLCPCB](https://jlcpcb.com/)'s [production files](https://raw.githu
 The firmware was developed using [PlatformIO](https://platformio.org/).
 Project files can be found in [`/Firmware`](https://github.com/ncolomer/WaterTankMonitor/tree/main/Firmware) directory.
 
-## PTVO firmware characteristics
+## Host PTVO firmware characteristics
 
-The following infos should help you generate your own custom PTVO firmware + Zigbee2MQTT converter:
+To report measured values via Zigbee, the board need a host PTVO firmware connected on pins PD3(RX) PD4(TX).
+The following infos should help you generate your own custom PTVO firmware:
 ```
 Board type: CC2530
 Device type: Router
@@ -64,7 +67,7 @@ Set default reporting interval (s): 0
 
 Output pins:
 P02: Output 2, UART (UART: 115200 8N1, Packet end: 0x0D, Byte: 239)
-     => UART pins are P02/RX P03/TX
+     => PTVO UART pins are P02(RX) P03(TX)
 P30: Output 3, UART sensor (Mode: On/Off, : Read/Write, Units: None), Remember state
      => oled display on/off state
 P31: Output 4, UART sensor (Mode: Analog value, : Read, Units: None)
