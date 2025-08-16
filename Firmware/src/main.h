@@ -1,3 +1,8 @@
+#ifndef MAIN_H_
+#define MAIN_H_
+
+#include <Arduino.h>
+
 #ifdef DEBUG
   #define PTVO_CALLBACK_DEBUG(endpoint, isWrite, value) ({\
     Serial.print(F(endpoint));\
@@ -17,7 +22,28 @@
   #define SETTINGS_DEBUG(settings)
 #endif
 
-/// @brief structure holding all ptvo tracked variables
+// Pin definitions for XIAO ESP32C6
+#define LED_PIN                     21  // Built-in LED on XIAO ESP32C6
+#define BUTTON_PIN                  0   // Boot button
+#define I2C_SDA_PIN                 4   // I2C SDA
+#define I2C_SCL_PIN                 5   // I2C SCL
+#define UART_RX_PIN                 20  // UART RX for ultrasonic sensor
+#define UART_TX_PIN                 21  // UART TX for ultrasonic sensor
+
+// Zigbee endpoint definitions (matching PTVO configuration)
+#define ENDPOINT_DISPLAY_STATE      3
+#define ENDPOINT_WATER_LEVEL_VALUE  4
+#define ENDPOINT_RAW_DISTANCE_VALUE 5
+#define ENDPOINT_MIN_DISTANCE_VALUE 6
+#define ENDPOINT_MAX_DISTANCE_VALUE 7
+
+// Timing constants
+#define BLINK_DURATION              100   // ms
+#define DISPLAY_ON_DURATION         30000 // ms
+#define SENSOR_READ_INTERVAL        1000  // ms
+#define ZIGBEE_REPORT_INTERVAL      5000  // ms
+
+/// @brief structure holding all zigbee tracked variables
 struct Variables
 {
   // measured water level (in percentage)
@@ -32,9 +58,11 @@ struct Variables
   uint8_t displayState;
 };
 
-/// @brief eeprom-saved structure
+/// @brief preferences-saved structure (ESP32 uses Preferences instead of EEPROM)
 struct Settings
 {
   float minDistanceValue;
   float maxDistanceValue;
 };
+
+#endif // MAIN_H_
