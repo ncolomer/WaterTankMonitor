@@ -1,165 +1,176 @@
 #include <Arduino.h>
-#include <EEPROM.h>
+#include <Preferences.h>
 
-#include <EnableInterrupt.h>
-#include <extensions/PtvoUartSensor.h>
+#include "Display.h"
+#include "Sensor.h"
+#include "ZigbeeManager.h"
+#include "main.h"
 
-#include <Display.h>
-#include <Sensor.h>
-#include <main.h>
-
-#define LED_PIN                     9 // PB1
-#define INT_PIN                     14 // PC0 / PCINT8
-
-#define SETTINGS_EEPROM_ADDRESS     0
-
-#define BLINK_DURATION              100 // ms
-#define DISPLAY_ON_DURATION         30000 // ms
-
-#define ENDPOINT_DISPLAY_STATE      ENDPOINT_3
-#define ENDPOINT_WATER_LEVEL_VALUE  ENDPOINT_4
-#define ENDPOINT_RAW_DISTANCE_VALUE ENDPOINT_5
-#define ENDPOINT_MIN_DISTANCE_VALUE ENDPOINT_6
-#define ENDPOINT_MAX_DISTANCE_VALUE ENDPOINT_7
-
-PDTL::PtvoUartSensor<5, 5> ptvo;
+// Global objects
 Display display;
 Sensor sensor;
+ZigbeeManager zigbee;
+Preferences preferences;
 
+// Global variables
 Settings settings;
 Variables variables;
 
+// Timing variables
 uint32_t turnOffLedTimestamp = 0;
-
 uint32_t turnOffDisplayTimestamp = 0;
-bool displayStateChanged = false;
+uint32_t lastSensorReadTime = 0;
+uint32_t lastZigbeeReportTime = 0;
 
-void BlinkLed()
-{
-  digitalWrite(LED_PIN, HIGH);
-  turnOffLedTimestamp = millis() + BLINK_DURATION;
+// Button handling
+bool lastButtonState = HIGH;
+bool buttonPressed = false;
+
+void IRAM_ATTR buttonISR() {
+    buttonPressed = true;
 }
 
-void TurnOnDisplay()
-{
-  turnOffDisplayTimestamp = millis() + DISPLAY_ON_DURATION;
-  variables.displayState = 1;
-  displayStateChanged = true;
+void blinkLed() {
+    digitalWrite(LED_PIN, HIGH);
+    turnOffLedTimestamp = millis() + BLINK_DURATION;
 }
 
-void PtvoCallback(PDTL::VariableData &variableInfo, bool isWrite)
-{
-  BlinkLed();
-  switch (variableInfo.m_uId)
-  {
-  case ENDPOINT_WATER_LEVEL_VALUE:
-    PTVO_CALLBACK_DEBUG("ENDPOINT_WATER_LEVEL_VALUE", isWrite, variables.waterLevelValue);
-    break;
-  case ENDPOINT_RAW_DISTANCE_VALUE:
-    PTVO_CALLBACK_DEBUG("ENDPOINT_RAW_DISTANCE_VALUE", isWrite, variables.rawDistanceValue);
-    break;
-  case ENDPOINT_MIN_DISTANCE_VALUE:
-    PTVO_CALLBACK_DEBUG("ENDPOINT_MIN_DISTANCE_VALUE", isWrite, variables.minDistanceValue);
-    if (isWrite && settings.minDistanceValue != variables.minDistanceValue)
-    {
-      settings.minDistanceValue = variables.minDistanceValue;
-      EEPROM.put(SETTINGS_EEPROM_ADDRESS, settings);
-    }
-    break;
-  case ENDPOINT_MAX_DISTANCE_VALUE:
-    PTVO_CALLBACK_DEBUG("ENDPOINT_MAX_DISTANCE_VALUE", isWrite, variables.maxDistanceValue);
-    if (isWrite && settings.maxDistanceValue != variables.maxDistanceValue)
-    {
-      settings.maxDistanceValue = variables.maxDistanceValue;
-      EEPROM.put(SETTINGS_EEPROM_ADDRESS, settings);
-    }
-    break;
-  case ENDPOINT_DISPLAY_STATE:
-    PTVO_CALLBACK_DEBUG("ENDPOINT_DISPLAY_STATE", isWrite, variables.displayState);
-    // max z2m "trigger" duration is DISPLAY_ON_DURATION
-    // see https://ptvo.info/zigbee-configurable-firmware-features/gpio/
-    if (isWrite) TurnOnDisplay();
-    break;
-  }
+void turnOnDisplay() {
+    turnOffDisplayTimestamp = millis() + DISPLAY_ON_DURATION;
+    variables.displayState = 1;
+    display.setDisplay(true);
+    zigbee.setDisplayState(true);
+    blinkLed();
 }
 
-void ButtonCallback(void) {
-  if (displayStateChanged) return; // not yet processed, ignore
-  BlinkLed();
-  TurnOnDisplay();
-}
-
-void setup()
-{
-  pinMode(LED_PIN, OUTPUT);
-  BlinkLed();
-
-  pinMode(INT_PIN, INPUT_PULLUP);
-  enableInterrupt(INT_PIN, ButtonCallback, FALLING);
-
-  // Initialize serial
-  Serial.begin(115200);
-  Serial.println(F("WaterTankMonitor"));
-  Serial.println(F("================"));
-
-  // Initialize display
-  display.begin();
-  TurnOnDisplay();
-
-  // Initialize sensor
-  sensor.begin();
-
-  // Configure ptvo data tag link
-  ptvo.AddVariable(ENDPOINT_DISPLAY_STATE, variables.displayState, PtvoCallback);
-  ptvo.AddVariable(ENDPOINT_WATER_LEVEL_VALUE, variables.waterLevelValue, PtvoCallback);
-  ptvo.AddVariable(ENDPOINT_RAW_DISTANCE_VALUE, variables.rawDistanceValue, PtvoCallback);
-  ptvo.AddVariable(ENDPOINT_MIN_DISTANCE_VALUE, variables.minDistanceValue, PtvoCallback);
-  ptvo.AddVariable(ENDPOINT_MAX_DISTANCE_VALUE, variables.maxDistanceValue, PtvoCallback);
-
-  // Load store settings from eeprom
-  EEPROM.get(SETTINGS_EEPROM_ADDRESS, settings);
-  SETTINGS_DEBUG(settings);
-  variables.minDistanceValue = settings.minDistanceValue;
-  variables.maxDistanceValue = settings.maxDistanceValue;
-
-  // Send settings to firmware
-  ptvo.SendVariable(ENDPOINT_DISPLAY_STATE);
-  ptvo.SendVariable(ENDPOINT_MIN_DISTANCE_VALUE);
-  ptvo.SendVariable(ENDPOINT_MAX_DISTANCE_VALUE);
-}
-
-void loop()
-{
-  // handle led status
-  if (digitalRead(LED_PIN) && millis() >= turnOffLedTimestamp)
-  { // should turn off
-    digitalWrite(LED_PIN, LOW);
-  }
-
-  // handle display status
-  if (variables.displayState && millis() >= turnOffDisplayTimestamp)
-  { // should turn off
+void turnOffDisplay() {
     variables.displayState = 0;
-    displayStateChanged = true;
-  }
+    display.setDisplay(false);
+    zigbee.setDisplayState(false);
+}
 
-  if (displayStateChanged)
-  { // report state changed
-    display.setDisplay(variables.displayState);
-    ptvo.SendVariable(ENDPOINT_DISPLAY_STATE);
-    displayStateChanged = false;
-  }
+void handleButton() {
+    if (buttonPressed) {
+        buttonPressed = false;
+        turnOnDisplay();
+    }
+}
 
-  // handle ptvo comms
-  ptvo.Process();
+void updateWaterLevel() {
+    float distance = sensor.readDistanceCm();
+    
+    if (!isnan(distance) && distance != variables.rawDistanceValue) {
+        variables.rawDistanceValue = distance;
+        
+        // Calculate water level percentage
+        if (variables.maxDistanceValue > variables.minDistanceValue) {
+            variables.waterLevelValue = (variables.maxDistanceValue - variables.rawDistanceValue) / 
+                                      (variables.maxDistanceValue - variables.minDistanceValue) * 100.0;
+            variables.waterLevelValue = constrain(variables.waterLevelValue, 0, 100);
+        } else {
+            variables.waterLevelValue = 0;
+        }
+        
+        // Update display
+        display.displayPercentage((uint8_t)variables.waterLevelValue);
+        
+        // Update Zigbee attributes
+        zigbee.setRawDistance(variables.rawDistanceValue);
+        zigbee.setWaterLevel(variables.waterLevelValue);
+        
+        Serial.printf("Distance: %.1f cm, Water Level: %.1f%%\n", 
+                     variables.rawDistanceValue, variables.waterLevelValue);
+    }
+}
 
-  // sensor reading
-  float distance = sensor.readDistanceCm();
-  if (distance != variables.rawDistanceValue)
-  {
-    variables.rawDistanceValue = distance;
-    variables.waterLevelValue = (variables.maxDistanceValue - variables.rawDistanceValue) / (variables.maxDistanceValue - variables.minDistanceValue) * 100.0;
-    variables.waterLevelValue = constrain(variables.waterLevelValue, 0, 100);
-    display.displayPercentage(variables.waterLevelValue);
-  }
+void loadSettings() {
+    // Load settings from preferences
+    settings.minDistanceValue = preferences.getFloat("min_dist", 20.0);
+    settings.maxDistanceValue = preferences.getFloat("max_dist", 200.0);
+    
+    // Apply to variables
+    variables.minDistanceValue = settings.minDistanceValue;
+    variables.maxDistanceValue = settings.maxDistanceValue;
+    
+    SETTINGS_DEBUG(settings);
+}
+
+void saveSettings() {
+    preferences.putFloat("min_dist", settings.minDistanceValue);
+    preferences.putFloat("max_dist", settings.maxDistanceValue);
+}
+
+void setup() {
+    // Initialize serial
+    Serial.begin(115200);
+    delay(1000); // Give time for serial monitor
+    
+    Serial.println(F("Water Tank Monitor - ESP32C6 Version"));
+    Serial.println(F("===================================="));
+    
+    // Initialize preferences
+    if (!preferences.begin("water-tank", false)) {
+        Serial.println(F("Failed to initialize preferences"));
+    }
+    
+    // Initialize pins
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    
+    // Attach button interrupt
+    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
+    
+    // Initialize components
+    if (!display.begin()) {
+        Serial.println(F("Failed to initialize display"));
+    }
+    
+    if (!sensor.begin()) {
+        Serial.println(F("Failed to initialize sensor"));
+    }
+    
+    if (!zigbee.begin()) {
+        Serial.println(F("Failed to initialize Zigbee"));
+    }
+    
+    // Load settings
+    loadSettings();
+    
+    // Turn on display initially
+    turnOnDisplay();
+    
+    Serial.println(F("Setup complete"));
+}
+
+void loop() {
+    // Handle LED status
+    if (digitalRead(LED_PIN) && millis() >= turnOffLedTimestamp) {
+        digitalWrite(LED_PIN, LOW);
+    }
+    
+    // Handle button press
+    handleButton();
+    
+    // Handle display timeout
+    if (variables.displayState && millis() >= turnOffDisplayTimestamp) {
+        turnOffDisplay();
+    }
+    
+    // Handle sensor reading
+    if (millis() - lastSensorReadTime >= SENSOR_READ_INTERVAL) {
+        updateWaterLevel();
+        lastSensorReadTime = millis();
+    }
+    
+    // Handle Zigbee processing
+    zigbee.process();
+    
+    // Handle Zigbee reporting
+    if (millis() - lastZigbeeReportTime >= ZIGBEE_REPORT_INTERVAL) {
+        zigbee.reportAllValues();
+        lastZigbeeReportTime = millis();
+    }
+    
+    // Small delay to prevent watchdog issues
+    delay(10);
 }

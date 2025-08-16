@@ -2,19 +2,20 @@
 #define SRC_SENSOR_H_
 
 #include <Arduino.h>
-#include <NeoSWSerial.h>
-#include <CircularBuffer.h>
+#include <HardwareSerial.h>
 
 class Sensor {
 private:
-    NeoSWSerial serial;
-    CircularBuffer buffer;
+    HardwareSerial* serial;
     uint32_t nextReadTimestamp = 0;
     float rawDistanceMm = 0;
+    bool isInitialized = false;
+    
 public:
     Sensor(void);
     bool begin(void);
     float readDistanceCm(void);
+    bool isReady(void) { return isInitialized; }
 };
 
 #endif

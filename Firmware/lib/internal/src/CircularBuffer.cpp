@@ -1,4 +1,5 @@
 #include <CircularBuffer.h>
+#include <algorithm>
 
 CircularBuffer::CircularBuffer(uint8_t size)
   : bufferSize{size}
@@ -23,7 +24,7 @@ void CircularBuffer::push(uint8_t word)
 {
   buffer[ptr] = word; // write at current position
   ptr = (ptr + 1) % bufferSize; // move the pointer
-  size = min(size + 1, bufferSize); // update size
+  size = std::min<uint8_t>(size + 1, bufferSize); // update size
 }
 
 void CircularBuffer::shift(void)
