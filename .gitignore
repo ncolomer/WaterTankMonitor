@@ -101,3 +101,7 @@ Temporary Items
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/kicad,macos,platformio,visualstudiocode
+
+.claude
+.mcp.json
+.vscode
