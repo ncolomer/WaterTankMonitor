@@ -2394,6 +2394,17 @@
 				(justify mirror)
 			)
 		)
+		(property "LCSC" "C49678"
+			(at 0 0 0)
+			(layer "B.SilkS")
+			(hide yes)
+			(uuid "5d64c421-023e-41b2-8c0b-116056b79563")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/0a76a1d0-79ff-4d86-90ab-da0fada1b7bb")
 		(sheetname "/")
